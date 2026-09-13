@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -37,9 +38,9 @@ func cmdInit(args []string) error {
 	// Reuse the existing identity when re-running. init is idempotent: it
 	// refreshes hooks and the default branch without minting a new repo_id,
 	// which would orphan every run recorded so far.
-	repoID, err := config.ReadRepoID(root)
-	if err != nil || repoID == "" {
-		repoID = store.NewID()
+	repoID, err := reuseOrMintRepoID(root)
+	if err != nil {
+		return err
 	}
 
 	upstream, err := git.GetRemoteURL(ctx, root, "origin")
@@ -117,4 +118,18 @@ func cmdInit(args []string) error {
 	}
 	fmt.Printf("\nNext:\n  slopgate daemon          # in another terminal\n  git push slopgate HEAD\n  slopgate wait\n")
 	return nil
+}
+
+// reuseOrMintRepoID returns the repo id already on disk, or mints one when
+// the file is absent. Any other read error (permissions, empty/corrupt file)
+// is returned so init cannot silently orphan run history.
+func reuseOrMintRepoID(root string) (string, error) {
+	repoID, err := config.ReadRepoID(root)
+	if err == nil {
+		return repoID, nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return store.NewID(), nil
+	}
+	return "", fmt.Errorf("read repo id: %w", err)
 }
