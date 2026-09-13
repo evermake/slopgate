@@ -126,7 +126,7 @@ func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, r
 	// branch: commits that landed on the default branch since this branch
 	// started would otherwise appear as reversed changes and fire rules on
 	// files nobody touched.
-	base, err := r.resolveBase(ctx, wt, repo.DefaultBranch)
+	base, err := r.resolveBase(ctx, wt, repo.DefaultBranch, run.FetchWarning != "")
 	if err != nil {
 		return err
 	}
@@ -212,15 +212,26 @@ func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, r
 // resolveBase returns the merge-base with the default branch, preferring the
 // freshly fetched remote-tracking ref and falling back to a local branch of the
 // same name so an offline run still produces a sane diff.
-func (r *Runner) resolveBase(ctx context.Context, wt, defaultBranch string) (string, error) {
+//
+// fetchFailed reports whether step 2's fetch of origin/defaultBranch failed.
+// When it did and neither ref resolves, slopgate has no way to tell "this
+// repo's very first branch" apart from "the gate can't reach or was never
+// told about the real default branch" — so it refuses to guess and errors
+// the run instead of silently diffing against the empty tree, which would
+// hand every rule the whole codebase as "changed" (issue #17).
+func (r *Runner) resolveBase(ctx context.Context, wt, defaultBranch string, fetchFailed bool) (string, error) {
 	for _, ref := range []string{"origin/" + defaultBranch, defaultBranch} {
 		if mb, err := git.MergeBase(ctx, wt, "HEAD", ref); err == nil && mb != "" {
 			return mb, nil
 		}
 	}
-	// A repo whose very first branch is being gated has no default branch to
-	// merge-base against; the empty tree makes every file a changed file,
-	// which is the correct reading of "all of this is new".
+	if fetchFailed {
+		return "", fmt.Errorf("could not determine a base to gate against: fetching origin/%s failed and no local %s ref exists", defaultBranch, defaultBranch)
+	}
+	// The fetch succeeded but still left no default branch to merge-base
+	// against: a repo whose very first branch is being gated. The empty tree
+	// makes every file a changed file, which is the correct reading of "all
+	// of this is new".
 	return git.EmptyTreeSHA, nil
 }
 
