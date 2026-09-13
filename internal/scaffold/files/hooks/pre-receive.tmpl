@@ -1,0 +1,6 @@
+#!/bin/sh
+# Installed by slopgate. Rejects the push when the daemon is not running.
+#
+# Rejection must live here and not in post-receive: post-receive runs after the
+# refs are already updated and git ignores its exit code.
+exec {{.Binary}} hook pre-receive --repo-id {{.RepoID}}

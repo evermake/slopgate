@@ -1,0 +1,7 @@
+{"type":"result","subtype":"success","is_error":false,
+ "usage":{"input_tokens":1200,"output_tokens":90},
+ "structured_output":{"findings":[
+   {"file":"src/d.ts","line":2,"snippet":"  return x as User","explanation":"REAL: `x` is unknown and is asserted straight to User; narrow with a type guard."},
+   {"file":"src/untouched.ts","line":1,"snippet":"whatever","explanation":"HALLUCINATION: file was never changed."},
+   {"file":"src/d.ts","line":2,"snippet":"const nothing = like.this()","explanation":"HALLUCINATION: snippet is not at that line."}
+ ]}}

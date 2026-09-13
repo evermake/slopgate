@@ -1,0 +1,7 @@
+#!/bin/sh
+# Installed by slopgate. Registers the gate run, synchronously.
+#
+# Registration cannot move into pre-receive: since git 2.11 the pushed objects
+# sit in a quarantine directory until pre-receive succeeds, so the daemon --
+# a separate process -- cannot yet read the commit it is being asked to gate.
+exec {{.Binary}} hook post-receive --repo-id {{.RepoID}}

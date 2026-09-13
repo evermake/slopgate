@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Fake `claude` for testing. Ignores its arguments and prints the envelope
+# named by STUB_RESPONSE, so one stub serves every scenario.
+cat "$STUB_RESPONSE"
