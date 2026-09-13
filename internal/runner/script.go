@@ -31,21 +31,35 @@ type scriptEnv struct {
 //
 // A missing script is Skipped and counts as passing -- absence is not an error,
 // it just means the project has nothing to do at that stage.
-func (r *Runner) runScript(ctx context.Context, name model.ScriptName, wt string, repoID, sha string, env scriptEnv) model.ScriptResult {
-	res := model.ScriptResult{Name: name}
+func (r *Runner) runScript(ctx context.Context, name model.ScriptName, wt string, repoID, sha string, env scriptEnv) (res model.ScriptResult) {
+	res.Name = name
 	path := filepath.Join(wt, ".slopgate", "scripts", string(name)+".sh")
 	if _, err := os.Stat(path); err != nil {
 		res.Skipped = true
-		return res
+		return
 	}
 
 	logw, err := r.Store.OpenLogWriter(repoID, sha, name)
 	if err != nil {
 		res.Error = "open log: " + err.Error()
-		return res
+		return
 	}
-	defer logw.Close()
 	res.LogPath = r.Store.LogPath(repoID, sha, name)
+	defer func() {
+		// Close is where ringLogWriter actually flushes to disk, not a
+		// courtesy on a read handle. If it fails, res.LogPath was never
+		// written -- clear it so nothing downstream trusts a dangling path
+		// -- and fold the failure into res.Error so the script counts as
+		// failed instead of silently losing its only diagnostic.
+		if cerr := logw.Close(); cerr != nil {
+			res.LogPath = ""
+			if res.Error == "" {
+				res.Error = "write log: " + cerr.Error()
+			} else {
+				res.Error += "; write log: " + cerr.Error()
+			}
+		}
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, r.scriptTimeout())
 	defer cancel()
@@ -68,7 +82,7 @@ func (r *Runner) runScript(ctx context.Context, name model.ScriptName, wt string
 	if err := cmd.Start(); err != nil {
 		res.Error = err.Error()
 		res.DurationMS = r.since(start)
-		return res
+		return
 	}
 	pgid := cmd.Process.Pid
 
@@ -91,7 +105,7 @@ func (r *Runner) runScript(ctx context.Context, name model.ScriptName, wt string
 		}
 	}
 	res.DurationMS = r.since(start)
-	return res
+	return
 }
 
 func exitCodeOf(err error) int {
