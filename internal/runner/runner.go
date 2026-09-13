@@ -79,11 +79,10 @@ func (r *Runner) Execute(ctx context.Context, repo model.Repo, run *model.Run) {
 		r.logf("run %s: save: %v", run.SHA[:7], err)
 	}
 
-	// The rule prose is captured while the worktree still exists; by the time
-	// feedback renders, the worktree has been removed and the branch may have
-	// moved on, so it cannot be read back from disk.
-	prose := map[string]string{}
-	if err := r.execute(ctx, repo, run, prose); err != nil {
+	// Rule paths are relative to the repo root, so they stay valid after the
+	// worktree is removed and by the time feedback renders.
+	rulePaths := map[string]string{}
+	if err := r.execute(ctx, repo, run, rulePaths); err != nil {
 		run.State = model.StateErrored
 		run.Error = err.Error()
 	}
@@ -95,7 +94,7 @@ func (r *Runner) Execute(ctx context.Context, repo model.Repo, run *model.Run) {
 		run.Error = "run ended in a non-terminal state"
 	}
 
-	if err := r.writeFeedback(repo, run, prose); err != nil {
+	if err := r.writeFeedback(repo, run, rulePaths); err != nil {
 		r.logf("run %s: feedback: %v", short(run.SHA), err)
 	}
 	if err := r.Store.SaveRun(run); err != nil {
@@ -104,7 +103,7 @@ func (r *Runner) Execute(ctx context.Context, repo model.Repo, run *model.Run) {
 	r.logf("run %s: %s", short(run.SHA), strings.ToUpper(string(run.State)))
 }
 
-func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, prose map[string]string) error {
+func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, rulePaths map[string]string) error {
 	// 1. Fresh worktree. No warm pool, no stale state; the cost is accepted.
 	wt := r.Store.WorktreePath(repo.ID, run.ID)
 	if err := git.AddWorktree(ctx, repo.GateRepo, wt, run.SHA); err != nil {
@@ -174,7 +173,7 @@ func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, p
 		return err
 	}
 	for _, rule := range rules {
-		prose[rule.Name] = rule.Body
+		rulePaths[rule.Name] = filepath.Join(".slopgate", "rules", rule.Name+".md")
 	}
 	r.logf("run %s: %d rule(s) matched", short(run.SHA), len(rules))
 
@@ -302,7 +301,7 @@ func (r *Runner) runRules(ctx context.Context, repo model.Repo, run *model.Run, 
 
 // writeFeedback persists the artifact when the run failed or the gate config
 // drifted. A passed run that quietly dropped a rule must still leave a record.
-func (r *Runner) writeFeedback(repo model.Repo, run *model.Run, prose map[string]string) error {
+func (r *Runner) writeFeedback(repo model.Repo, run *model.Run, rulePaths map[string]string) error {
 	// ShouldWrite covers failed-or-drifted. An errored run is added here: the
 	// agent still needs to know why the gate could not complete, and a failed
 	// setup.sh has a log tail that is exactly that diagnostic.
@@ -318,7 +317,7 @@ func (r *Runner) writeFeedback(repo model.Repo, run *model.Run, prose map[string
 			tails[name] = t
 		}
 	}
-	out := feedback.Render(feedback.Input{Run: run, RuleProse: prose, LogTail: tails})
+	out := feedback.Render(feedback.Input{Run: run, RulePaths: rulePaths, LogTail: tails})
 	path, err := r.Store.WriteFeedback(repo.ID, run.SHA, out)
 	if err != nil {
 		return err

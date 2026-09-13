@@ -49,7 +49,7 @@ rc=$?
 [ $rc -eq 1 ] && ok "FAILED on a real violation (exit 1)" || no "verdict" "exit $rc: $(head -20 "$ROOT/wait.log")"
 grep -q "REAL:" "$ROOT/wait.log" && ok "valid finding reached the feedback" || no "finding" "$(head -30 "$ROOT/wait.log")"
 grep -q "HALLUCINATION" "$ROOT/wait.log" && no "FILTER LEAK: a hallucinated finding reached the user" "$(grep -n HALLUCINATION "$ROOT/wait.log" | head -3)" || ok "both hallucinations filtered out of the feedback"
-grep -q "Narrow with a type guard" "$ROOT/wait.log" && ok "rule prose quoted alongside the violation" || no "prose" "rule text absent from feedback"
+grep -q "Rule: \`.slopgate/rules/no-casts.md\`" "$ROOT/wait.log" && ok "rule file path pointed to alongside the violation" || no "rule path" "rule file pointer absent from feedback"
 
 SHA=$(git rev-parse HEAD); RID=$(cat .slopgate/repo-id)
 RJ="$SLOPGATE_HOME/runs/$RID/$SHA/run.json"

@@ -76,8 +76,8 @@ func TestRender_FailedWithFindings(t *testing.T) {
 
 	in := Input{
 		Run: run,
-		RuleProse: map[string]string{
-			"no-type-casts": "Type assertions (`as X`) bypass the type checker. Narrow with a type guard instead.",
+		RulePaths: map[string]string{
+			"no-type-casts": ".slopgate/rules/no-type-casts.md",
 		},
 		LogTail: map[model.ScriptName]string{
 			model.ScriptCheck: "npm run check\nerror TS2345: ...\n",
@@ -100,7 +100,7 @@ func TestRender_FailedWithFindings(t *testing.T) {
 	mustContain(t, out, "- `test.sh` — passed")
 	mustContain(t, out, "## Rule violations")
 	mustContain(t, out, "### no-type-casts")
-	mustContain(t, out, "> Type assertions (`as X`) bypass the type checker. Narrow with a type guard instead.")
+	mustContain(t, out, "Rule: `.slopgate/rules/no-type-casts.md`")
 	mustContain(t, out, "**`src/api.ts:42`**")
 	mustContain(t, out, "```ts\nconst user = data as User\n```")
 	mustContain(t, out, "`data` is `unknown` here.")
@@ -301,19 +301,19 @@ func TestRender_SnippetWithBacktickFence(t *testing.T) {
 	mustContain(t, out, "uses a template literal")
 }
 
-func TestRender_MissingRuleProse(t *testing.T) {
+func TestRender_MissingRulePath(t *testing.T) {
 	run := baseRun(t, model.StateFailed)
 	run.Rules = []model.RuleResult{
-		{Name: "no-prose-rule", Findings: []model.Finding{
-			{Rule: "no-prose-rule", File: "a.go", Line: 1, Snippet: "x", Explanation: "e"},
+		{Name: "no-path-rule", Findings: []model.Finding{
+			{Rule: "no-path-rule", File: "a.go", Line: 1, Snippet: "x", Explanation: "e"},
 		}},
 	}
-	// in.RuleProse deliberately has no entry for "no-prose-rule".
-	out := Render(Input{Run: run, RuleProse: map[string]string{"other-rule": "prose"}})
+	// in.RulePaths deliberately has no entry for "no-path-rule".
+	out := Render(Input{Run: run, RulePaths: map[string]string{"other-rule": ".slopgate/rules/other-rule.md"}})
 
-	mustContain(t, out, "### no-prose-rule")
-	if strings.Contains(out, ">") {
-		t.Error("must not render an empty blockquote when rule prose is missing")
+	mustContain(t, out, "### no-path-rule")
+	if strings.Contains(out, "Rule: `") {
+		t.Error("must not render a rule-path line when the rule's path is missing")
 	}
 }
 

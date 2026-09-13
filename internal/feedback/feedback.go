@@ -13,11 +13,12 @@ import (
 )
 
 // Input bundles a Run with the two pieces of context the renderer cannot
-// derive from the Run alone: rule prose (for the per-rule blockquote) and
-// already-tailed script log output.
+// derive from the Run alone: each matched rule's file path (so a violation
+// can point back at the rule that fired) and already-tailed script log
+// output.
 type Input struct {
 	Run       *model.Run
-	RuleProse map[string]string           // rule name -> markdown body, for the blockquote
+	RulePaths map[string]string           // rule name -> path to the rule's .md file
 	LogTail   map[model.ScriptName]string // already-tailed script output
 }
 
@@ -61,7 +62,7 @@ func Render(in Input) string {
 		sections = append(sections, renderSummary(run))
 
 		if findings := run.Findings(); len(findings) > 0 {
-			sections = append(sections, renderRuleViolations(run, in.RuleProse))
+			sections = append(sections, renderRuleViolations(run, in.RulePaths))
 		}
 	}
 
@@ -198,22 +199,22 @@ func pluralize(n int, singular string) string {
 // "### <rule>" subsection per rule that has surviving findings, in the
 // stable order rules appear in run.Rules, each finding in its existing
 // order.
-func renderRuleViolations(run *model.Run, ruleProse map[string]string) string {
+func renderRuleViolations(run *model.Run, rulePaths map[string]string) string {
 	var ruleSections []string
 	for _, rr := range run.Rules {
 		if len(rr.Findings) == 0 {
 			continue
 		}
-		ruleSections = append(ruleSections, renderRuleSection(rr, ruleProse[rr.Name]))
+		ruleSections = append(ruleSections, renderRuleSection(rr, rulePaths[rr.Name]))
 	}
 	return "## Rule violations\n\n" + strings.Join(ruleSections, "\n\n")
 }
 
-func renderRuleSection(rr model.RuleResult, prose string) string {
+func renderRuleSection(rr model.RuleResult, path string) string {
 	blocks := []string{"### " + rr.Name}
 
-	if strings.TrimSpace(prose) != "" {
-		blocks = append(blocks, blockquote(prose))
+	if strings.TrimSpace(path) != "" {
+		blocks = append(blocks, fmt.Sprintf("Rule: `%s`", path))
 	}
 
 	findingBlocks := make([]string, 0, len(rr.Findings))
@@ -223,18 +224,6 @@ func renderRuleSection(rr model.RuleResult, prose string) string {
 	blocks = append(blocks, strings.Join(findingBlocks, "\n\n---\n\n"))
 
 	return strings.Join(blocks, "\n\n")
-}
-
-func blockquote(text string) string {
-	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "" {
-			lines[i] = ">"
-		} else {
-			lines[i] = "> " + l
-		}
-	}
-	return strings.Join(lines, "\n")
 }
 
 // renderFinding renders one finding: a bold file:line reference, the
