@@ -115,7 +115,17 @@ func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, r
 		}
 	}()
 
-	// 2. Fetch the base branch inside the worktree, reusing the developer's
+	// 2. Sync the gate repo's origin with the developer's repo before
+	// fetching: `slopgate init` may have run before origin existed, or origin
+	// may have changed since, and either one leaves the gate repo's origin
+	// missing or stale — "git fetch origin" then fails with "'origin' does
+	// not appear to be a git repository" (issue #20). Re-pointing it here
+	// every run self-heals both cases instead of requiring a manual re-init.
+	if err := syncOrigin(ctx, repo); err != nil {
+		r.logf("run %s: sync origin remote: %v", short(run.SHA), err)
+	}
+
+	// Fetch the base branch inside the worktree, reusing the developer's
 	// existing git credentials via its origin. Failure is a warning.
 	if err := git.Fetch(ctx, wt, "origin", repo.DefaultBranch, FetchTimeout); err != nil {
 		run.FetchWarning = fmt.Sprintf("could not fetch origin/%s: %v (gated against the last known base)", repo.DefaultBranch, err)
@@ -207,6 +217,18 @@ func (r *Runner) execute(ctx context.Context, repo model.Repo, run *model.Run, r
 		run.State = model.StateFailed
 	}
 	return nil
+}
+
+// syncOrigin re-points the gate repo's origin at the developer's repo's
+// current origin, so the fetch in step 2 always has a same remote to fetch
+// through. Best-effort: a developer repo with no origin configured, or a
+// lookup that fails, leaves the gate repo's origin untouched.
+func syncOrigin(ctx context.Context, repo model.Repo) error {
+	upstream, err := git.GetRemoteURL(ctx, repo.Path, "origin")
+	if err != nil || upstream == "" {
+		return nil
+	}
+	return git.AddRemote(ctx, repo.GateRepo, "origin", upstream)
 }
 
 // resolveBase returns the merge-base with the default branch, preferring the
